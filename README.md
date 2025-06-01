@@ -31,50 +31,9 @@ This project provides an MCP server that enables programmatic interaction with y
 
 ---
 
-## 3. Configuration
+## 3. Running the Server
 
 You can run the server either directly on your host or via Docker.
-
-### Direct Run (using `uvx`)
-```json
-{
-  "Obsidian": {
-    "command": "uvx",
-    "args": [
-      "mcp-obsidian"
-    ],
-    "env": {
-      "OBSIDIAN_API_KEY": "<your_api_key_here>",
-      "OBSIDIAN_HOST": "<your_obsidian_host>"
-    }
-  }
-}
-```
-
-### Docker Desktop (Recommended)
-```json
-{
-  "mcpServers": {
-    "Obsidian": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "OBSIDIAN_API_KEY",
-        "-e",
-        "OBSIDIAN_HOST",
-        "mcp-obsidian-docker"
-      ],
-      "env": {
-        "OBSIDIAN_API_KEY": "<your_api_key_here>",
-        "OBSIDIAN_HOST": "host.docker.internal"
-      }
-    }
-  }
-}
-```
 
 #### Environment Variables
 | Variable | Description |
