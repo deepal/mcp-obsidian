@@ -1,11 +1,15 @@
-import json
+import contextlib
+from collections.abc import AsyncIterator
 import logging
 from collections.abc import Sequence
-from functools import lru_cache
 from typing import Any
 import os
 from dotenv import load_dotenv
-from mcp.server import Server
+from mcp.server.lowlevel import Server
+from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+from starlette.applications import Starlette
+from starlette.routing import Mount
+from starlette.types import Receive, Scope, Send
 from mcp.types import (
     Tool,
     TextContent,
@@ -27,7 +31,7 @@ api_key = os.getenv("OBSIDIAN_API_KEY")
 if not api_key:
     raise ValueError(f"OBSIDIAN_API_KEY environment variable required. Working directory: {os.getcwd()}")
 
-app = Server("mcp-obsidian")
+server = Server("mcp-obsidian")
 
 tool_handlers = {}
 def add_tool_handler(tool_class: tools.ToolHandler):
@@ -54,13 +58,13 @@ add_tool_handler(tools.PeriodicNotesToolHandler())
 add_tool_handler(tools.RecentPeriodicNotesToolHandler())
 add_tool_handler(tools.RecentChangesToolHandler())
 
-@app.list_tools()
+@server.list_tools()
 async def list_tools() -> list[Tool]:
     """List available tools."""
 
     return [th.get_tool_description() for th in tool_handlers.values()]
 
-@app.call_tool()
+@server.call_tool()
 async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
     """Handle tool calls for command line run."""
     
@@ -78,15 +82,36 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent | ImageCo
         logger.error(str(e))
         raise RuntimeError(f"Caught Exception. Error: {str(e)}")
 
+def create(json_response: bool = True) -> Starlette:
+    session_manager = StreamableHTTPSessionManager(
+        app=server,
+        event_store=None,
+        json_response=json_response,
+        stateless=True,
+    )
+    
+    async def handle_streamable_http(
+        scope: Scope, receive: Receive, send: Send
+    ) -> None:
+        await session_manager.handle_request(scope, receive, send)
+    
+    @contextlib.asynccontextmanager
+    async def lifespan(app: Starlette) -> AsyncIterator[None]:
+        """Context manager for session manager."""
+        async with session_manager.run():
+            logger.info("Application started with StreamableHTTP session manager!")
+            try:
+                yield
+            finally:
+                logger.info("Application shutting down...")
 
-async def main():
+    # Create an ASGI application using the transport
+    starlette_app = Starlette(
+        debug=True,
+        routes=[
+            Mount("/mcp", app=handle_streamable_http),
+        ],
+        lifespan=lifespan,
+    )
 
-    # Import here to avoid issues with event loops
-    from mcp.server.stdio import stdio_server
-
-    async with stdio_server() as (read_stream, write_stream):
-        await app.run(
-            read_stream,
-            write_stream,
-            app.create_initialization_options()
-        )
+    return starlette_app
